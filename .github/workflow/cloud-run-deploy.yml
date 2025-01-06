@@ -1,0 +1,54 @@
+name: Deploy Django REST API to Cloud Run
+
+on:
+  push:
+    branches:
+      - main  # This will trigger the workflow when you push to the 'main' branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest  # The operating system where the job will run (latest Ubuntu)
+    
+    steps:
+      # Step 1: Checkout the code from the repository
+      - name: Checkout code
+        uses: actions/checkout@v2  # This action checks out the repository code to the VM
+
+      # Step 2: Set up Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'  # Specify the version of Python to use
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  # Install all dependencies for Django
+
+      # Step 4: Set up Google Cloud SDK and authenticate using the service account key
+      - name: Set up Google Cloud
+        uses: google-github-actions/setup-gcloud@v0
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}  # Your Google Cloud Project ID
+          credentials: ${{ secrets.GCP_SA_KEY }}  # GitHub secret containing the Service Account Key
+
+      # Step 5: Build the Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/django-api .  # Build the image and tag it
+
+      # Step 6: Push the Docker image to Google Container Registry
+      - name: Push Docker image to Google Container Registry
+        run: |
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/django-api  # Push the built image to GCR
+
+      # Step 7: Deploy to Cloud Run with MySQL credentials passed as environment variables
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy django-api \
+            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/django-api \
+            --platform managed \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --set-env-vars DB_NAME=${{ secrets.DB_NAME }},DB_USER=${{ secrets.DB_USER }},DB_PASSWORD=${{ secrets.DB_PASSWORD }},DB_HOST=${{ secrets.DB_HOST }},DB_PORT=${{ secrets.DB_PORT }}
